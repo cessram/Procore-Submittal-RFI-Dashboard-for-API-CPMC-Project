@@ -1,0 +1,15 @@
+# Data files (sensitive project data — don't store in git)
+data/raw/*.xlsx
+data/raw/*.xls
+data/raw/*.csv
+data/processed/*.xlsx
+data/processed/*.csv
+
+# Python cache
+__pycache__/
+*.pyc
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
