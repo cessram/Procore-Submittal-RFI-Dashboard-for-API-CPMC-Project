@@ -2,15 +2,22 @@
 =============================================================
 POWER BI DATA PREP — Procore Submittal & RFI Transformer
 =============================================================
-Transforms Procore Excel exports into Power BI-optimized
-Excel files with calculated fields, lookup tables, and
-a ready-to-use data model.
+Tailored for API CPMC Project — Bird Construction
+Matches exact Procore export column headers.
+
+Your Procore Submittal columns:
+  Project Name, Title, Type, Ball in Court,
+  Ball In Court Due Date, Final Due Date, Status,
+  Overdue, Days Overdue
+
+Your Procore RFI columns:
+  Rfi #, Subject, Ball in Court, Date Created,
+  Due Date, Status, Overdue, Due Date Variance
 
 Usage:
-  1. Place your Procore exports in the same folder as this script
-  2. Update the filenames below
-  3. Run: python powerbi_data_prep.py
-  4. Import the output file into Power BI
+  1. Place your Procore exports in data/raw/
+  2. Run: python powerbi_data_prep.py
+  3. Import data/processed/PowerBI_Procore_Data.xlsx into Power BI
 
 pip install pandas openpyxl
 =============================================================
@@ -21,13 +28,12 @@ from datetime import datetime, timedelta
 import os
 
 # ============================================================
-# CONFIGURATION — Update these to match your files
+# CONFIGURATION
 # ============================================================
 SUBMITTAL_FILE = "../data/raw/Open Submittals - Final (2).xlsx"
 RFI_FILE = "../data/raw/Open RFIs - Final (2).xlsx"
 OUTPUT_FILE = "../data/processed/PowerBI_Procore_Data.xlsx"
 
-# Overdue thresholds (days)
 SUBMITTAL_OVERDUE_DAYS = 14
 RFI_OVERDUE_DAYS = 10
 
@@ -35,52 +41,83 @@ TODAY = datetime.now()
 
 
 # ============================================================
-# COLUMN MAPPING — Procore export headers → Standard headers
+# COLUMN MAPPING — Your exact Procore headers → Standard names
 # ============================================================
 SUBMITTAL_COL_MAP = {
-    "Number": "Submittal_ID", "#": "Submittal_ID", "Submittal Number": "Submittal_ID",
-    "Submittal No": "Submittal_ID", "Submittal No.": "Submittal_ID", "No.": "Submittal_ID",
-    "Subject": "Title", "Description": "Title", "Submittal Title": "Title",
-    "Spec Section": "Spec_Section", "Specification Section": "Spec_Section",
-    "Spec #": "Spec_Section", "CSI Code": "Spec_Section",
-    "Responsible Contractor": "Contractor", "Subcontractor": "Contractor",
-    "Sub": "Contractor", "Company": "Contractor", "Received From": "Contractor",
-    "Status": "Status", "Submittal Status": "Status", "Current Status": "Status",
-    "Ball in Court": "Ball_in_Court", "Ball In Court": "Ball_in_Court",
-    "Responsible": "Ball_in_Court", "Assigned To": "Ball_in_Court",
-    "Submitted On": "Date_Created", "Created Date": "Date_Created",
-    "Date Submitted": "Date_Created", "Created At": "Date_Created",
-    "Submit By": "Date_Created", "Received Date": "Date_Created",
-    "Due Date": "Due_Date", "Required Date": "Due_Date",
-    "Response Due": "Due_Date", "Needed By": "Due_Date",
-    "Date Returned": "Date_Closed", "Closed Date": "Date_Closed",
-    "Completed Date": "Date_Closed", "Date Completed": "Date_Closed",
-    "Returned Date": "Date_Closed", "Closed On": "Date_Closed",
-    "Reviewer": "Reviewer", "Approver": "Reviewer", "Reviewed By": "Reviewer",
-    "Lead Time": "Lead_Time",
+    # --- YOUR ACTUAL PROCORE SUBMITTAL COLUMNS ---
+    "Project Name": "Project_Name",
+    "Title": "Title",
+    "Type": "Submittal_Type",
+    "Ball in Court": "Ball_in_Court",
+    "Ball In Court": "Ball_in_Court",
+    "Ball In Court Due Date": "Due_Date",
+    "Ball in Court Due Date": "Due_Date",
+    "Final Due Date": "Final_Due_Date",
+    "Status": "Status",
+    "Overdue": "Overdue_Flag",
+    "Days Overdue": "Days_Overdue",
+    # --- ADDITIONAL PROCORE VARIATIONS (future-proofing) ---
+    "Number": "Submittal_ID",
+    "#": "Submittal_ID",
+    "Submittal Number": "Submittal_ID",
+    "Submittal No": "Submittal_ID",
+    "Submittal No.": "Submittal_ID",
+    "No.": "Submittal_ID",
+    "Subject": "Title",
+    "Description": "Title",
+    "Spec Section": "Spec_Section",
+    "Specification Section": "Spec_Section",
+    "Responsible Contractor": "Contractor",
+    "Subcontractor": "Contractor",
+    "Company": "Contractor",
+    "Received From": "Contractor",
+    "Submitted On": "Date_Created",
+    "Created Date": "Date_Created",
+    "Date Submitted": "Date_Created",
+    "Due Date": "Due_Date",
+    "Required Date": "Due_Date",
+    "Date Returned": "Date_Closed",
+    "Closed Date": "Date_Closed",
+    "Reviewer": "Reviewer",
+    "Approver": "Reviewer",
 }
 
 RFI_COL_MAP = {
-    "Number": "RFI_ID", "#": "RFI_ID", "RFI Number": "RFI_ID",
-    "RFI No": "RFI_ID", "RFI No.": "RFI_ID", "No.": "RFI_ID",
-    "Subject": "Subject", "Description": "Subject", "Question": "Subject",
-    "RFI Title": "Subject", "Title": "Subject",
-    "Discipline": "Discipline", "Category": "Discipline",
-    "Responsible Contractor": "Contractor", "Subcontractor": "Contractor",
-    "Sub": "Contractor", "Company": "Contractor", "Initiated By": "Contractor",
-    "From": "Contractor", "Created By": "Contractor",
-    "Status": "Status", "RFI Status": "Status", "Current Status": "Status",
-    "Priority": "Priority", "Importance": "Priority",
-    "Ball in Court": "Ball_in_Court", "Ball In Court": "Ball_in_Court",
-    "Responsible": "Ball_in_Court", "Assigned To": "Ball_in_Court",
-    "RFI Manager": "Ball_in_Court",
-    "Date Initiated": "Date_Created", "Created Date": "Date_Created",
-    "Date Created": "Date_Created", "Created At": "Date_Created", "Sent Date": "Date_Created",
-    "Due Date": "Due_Date", "Response Due": "Due_Date", "Required Date": "Due_Date",
-    "Date Closed": "Date_Closed", "Closed Date": "Date_Closed",
-    "Date Answered": "Date_Closed", "Answered Date": "Date_Closed",
-    "Completed Date": "Date_Closed",
-    "Cost Impact": "Cost_Impact", "Cost Code": "Cost_Impact",
+    # --- YOUR ACTUAL PROCORE RFI COLUMNS ---
+    "Rfi #": "RFI_ID",
+    "RFI #": "RFI_ID",
+    "Rfi#": "RFI_ID",
+    "Subject": "Subject",
+    "Ball in Court": "Ball_in_Court",
+    "Ball In Court": "Ball_in_Court",
+    "Date Created": "Date_Created",
+    "Date Initiated": "Date_Created",
+    "Due Date": "Due_Date",
+    "Status": "Status",
+    "Overdue": "Overdue_Flag",
+    "Due Date Variance": "Due_Date_Variance",
+    # --- ADDITIONAL PROCORE VARIATIONS (future-proofing) ---
+    "Number": "RFI_ID",
+    "#": "RFI_ID",
+    "RFI Number": "RFI_ID",
+    "Description": "Subject",
+    "Question": "Subject",
+    "Title": "Subject",
+    "Discipline": "Discipline",
+    "Category": "Discipline",
+    "Responsible Contractor": "Contractor",
+    "Subcontractor": "Contractor",
+    "Initiated By": "Contractor",
+    "From": "Contractor",
+    "Created By": "Contractor",
+    "Priority": "Priority",
+    "Importance": "Priority",
+    "Response Due": "Due_Date",
+    "Required Date": "Due_Date",
+    "Date Closed": "Date_Closed",
+    "Closed Date": "Date_Closed",
+    "Date Answered": "Date_Closed",
+    "Cost Impact": "Cost_Impact",
     "Schedule Impact": "Schedule_Impact",
 }
 
@@ -118,46 +155,75 @@ def load_and_map(filepath, col_map):
 
 
 def enrich_submittals(df):
-    """Add calculated fields for Power BI."""
-    # Parse dates
-    for col in ["Date_Created", "Due_Date", "Date_Closed"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
+    """Add calculated fields for Power BI — tailored to your Procore format."""
 
-    # Days Open
-    if "Date_Created" in df.columns:
+    # Parse any date columns present
+    for col in ["Date_Created", "Due_Date", "Date_Closed", "Final_Due_Date"]:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True).dt.tz_localize(None)
+
+    # ---- Days Open ----
+    # Your Procore export has "Days Overdue" (mapped to Days_Overdue) — use it directly
+    if "Days_Overdue" in df.columns:
+        df["Days_Open"] = pd.to_numeric(df["Days_Overdue"], errors="coerce").fillna(0).astype(int)
+    elif "Date_Created" in df.columns:
         df["Days_Open"] = df.apply(
-            lambda r: (r["Date_Closed"] - r["Date_Created"]).days
+            lambda r: (r.get("Date_Closed", pd.NaT) - r["Date_Created"]).days
             if pd.notna(r.get("Date_Closed"))
             else (TODAY - r["Date_Created"]).days
             if pd.notna(r["Date_Created"]) else 0,
             axis=1
         )
+    elif "Due_Date" in df.columns:
+        df["Days_Open"] = df["Due_Date"].apply(
+            lambda x: max(0, (TODAY - x).days) if pd.notna(x) else 0
+        )
+    else:
+        df["Days_Open"] = 0
 
-    # Is Open flag
+    # ---- Is Open flag ----
     open_keywords = ["open", "pending", "revise", "draft", "submitted", "in review"]
     if "Status" in df.columns:
         df["Is_Open"] = df["Status"].apply(
             lambda s: any(k in str(s).lower() for k in open_keywords)
         )
     else:
-        df["Is_Open"] = False
+        df["Is_Open"] = True  # If no status, assume open since this is "Open Submittals" export
 
-    # Overdue flag
-    df["Is_Overdue"] = df["Is_Open"] & (df["Days_Open"] > SUBMITTAL_OVERDUE_DAYS)
+    # ---- Overdue flag ----
+    # Your Procore export has "Overdue" column (mapped to Overdue_Flag) — use it directly
+    if "Overdue_Flag" in df.columns:
+        df["Is_Overdue"] = df["Overdue_Flag"].apply(
+            lambda x: str(x).strip().lower() in ["yes", "true", "1", "overdue", "y"]
+        )
+    else:
+        df["Is_Overdue"] = df["Is_Open"] & (df["Days_Open"] > SUBMITTAL_OVERDUE_DAYS)
 
-    # Aging bucket (for Power BI slicer)
+    # ---- Aging Bucket (for Power BI slicers) ----
     df["Aging_Bucket"] = pd.cut(
         df["Days_Open"],
         bins=[-1, 7, 14, 21, 30, 9999],
         labels=["0-7 days", "8-14 days", "15-21 days", "22-30 days", "30+ days"]
     )
 
-    # Week/Month for time intelligence
-    if "Date_Created" in df.columns:
-        df["Created_Week"] = df["Date_Created"].dt.isocalendar().week.astype("Int64")
-        df["Created_Month"] = df["Date_Created"].dt.to_period("M").astype(str)
-        df["Created_Year"] = df["Date_Created"].dt.year.astype("Int64")
+    # ---- Time Intelligence ----
+    # Use whichever date column is available
+    date_col = None
+    for c in ["Date_Created", "Due_Date", "Final_Due_Date"]:
+        if c in df.columns and df[c].notna().any():
+            date_col = c
+            break
+
+    if date_col and pd.api.types.is_datetime64_any_dtype(df[date_col]):
+        df["Created_Week"] = df[date_col].dt.isocalendar().week.astype("Int64")
+        df["Created_Month"] = df[date_col].dt.to_period("M").astype(str)
+        df["Created_Year"] = df[date_col].dt.year.astype("Int64")
+
+    # ---- Ball in Court as "Contractor" equivalent ----
+    # Your export doesn't have a separate Contractor column
+    # Ball in Court serves this purpose for tracking responsibility
+    if "Ball_in_Court" in df.columns and "Contractor" not in df.columns:
+        df["Contractor"] = df["Ball_in_Court"]
 
     # Item type label
     df["Item_Type"] = "Submittal"
@@ -166,41 +232,73 @@ def enrich_submittals(df):
 
 
 def enrich_rfis(df):
-    """Add calculated fields for Power BI."""
+    """Add calculated fields for Power BI — tailored to your Procore format."""
+
+    # Parse any date columns present
     for col in ["Date_Created", "Due_Date", "Date_Closed"]:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
+            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True).dt.tz_localize(None)
 
-    if "Date_Created" in df.columns:
+    # ---- Days Open ----
+    # Your Procore export has "Due Date Variance" (mapped to Due_Date_Variance)
+    if "Due_Date_Variance" in df.columns:
+        df["Days_Open"] = pd.to_numeric(df["Due_Date_Variance"], errors="coerce").fillna(0).abs().astype(int)
+    elif "Date_Created" in df.columns:
         df["Days_Open"] = df.apply(
-            lambda r: (r["Date_Closed"] - r["Date_Created"]).days
+            lambda r: (r.get("Date_Closed", pd.NaT) - r["Date_Created"]).days
             if pd.notna(r.get("Date_Closed"))
             else (TODAY - r["Date_Created"]).days
             if pd.notna(r["Date_Created"]) else 0,
             axis=1
         )
+    elif "Due_Date" in df.columns:
+        df["Days_Open"] = df["Due_Date"].apply(
+            lambda x: max(0, (TODAY - x).days) if pd.notna(x) else 0
+        )
+    else:
+        df["Days_Open"] = 0
 
+    # ---- Is Open flag ----
     open_keywords = ["open", "pending", "overdue", "draft", "in review"]
     if "Status" in df.columns:
         df["Is_Open"] = df["Status"].apply(
             lambda s: any(k in str(s).lower() for k in open_keywords)
         )
     else:
-        df["Is_Open"] = False
+        df["Is_Open"] = True  # "Open RFIs" export implies all are open
 
-    df["Is_Overdue"] = df["Is_Open"] & (df["Days_Open"] > RFI_OVERDUE_DAYS)
+    # ---- Overdue flag ----
+    if "Overdue_Flag" in df.columns:
+        df["Is_Overdue"] = df["Overdue_Flag"].apply(
+            lambda x: str(x).strip().lower() in ["yes", "true", "1", "overdue", "y"]
+        )
+    else:
+        df["Is_Overdue"] = df["Is_Open"] & (df["Days_Open"] > RFI_OVERDUE_DAYS)
 
+    # ---- Aging Bucket ----
     df["Aging_Bucket"] = pd.cut(
         df["Days_Open"],
         bins=[-1, 5, 10, 15, 21, 9999],
         labels=["0-5 days", "6-10 days", "11-15 days", "16-21 days", "21+ days"]
     )
 
-    if "Date_Created" in df.columns:
-        df["Created_Week"] = df["Date_Created"].dt.isocalendar().week.astype("Int64")
-        df["Created_Month"] = df["Date_Created"].dt.to_period("M").astype(str)
-        df["Created_Year"] = df["Date_Created"].dt.year.astype("Int64")
+    # ---- Time Intelligence ----
+    date_col = None
+    for c in ["Date_Created", "Due_Date"]:
+        if c in df.columns and df[c].notna().any():
+            date_col = c
+            break
 
+    if date_col and pd.api.types.is_datetime64_any_dtype(df[date_col]):
+        df["Created_Week"] = df[date_col].dt.isocalendar().week.astype("Int64")
+        df["Created_Month"] = df[date_col].dt.to_period("M").astype(str)
+        df["Created_Year"] = df[date_col].dt.year.astype("Int64")
+
+    # ---- Ball in Court as "Contractor" equivalent ----
+    if "Ball_in_Court" in df.columns and "Contractor" not in df.columns:
+        df["Contractor"] = df["Ball_in_Court"]
+
+    # Item type label
     df["Item_Type"] = "RFI"
 
     return df
@@ -208,23 +306,24 @@ def enrich_rfis(df):
 
 def create_lookup_tables(df_sub, df_rfi):
     """Create dimension/lookup tables for Power BI star schema."""
-    # Contractor lookup
-    contractors = set()
-    if df_sub is not None and "Contractor" in df_sub.columns:
-        contractors |= set(df_sub["Contractor"].dropna().unique())
-    if df_rfi is not None and "Contractor" in df_rfi.columns:
-        contractors |= set(df_rfi["Contractor"].dropna().unique())
+
+    # Contractor / Ball in Court lookup
+    parties = set()
+    for df in [df_sub, df_rfi]:
+        if df is not None:
+            for col in ["Contractor", "Ball_in_Court"]:
+                if col in df.columns:
+                    parties |= set(df[col].dropna().unique())
     df_contractors = pd.DataFrame({
-        "Contractor": sorted(contractors),
-        "Contractor_ID": range(1, len(contractors) + 1)
+        "Contractor": sorted(parties),
+        "Contractor_ID": range(1, len(parties) + 1)
     })
 
     # Status lookup
     statuses = set()
-    if df_sub is not None and "Status" in df_sub.columns:
-        statuses |= set(df_sub["Status"].dropna().unique())
-    if df_rfi is not None and "Status" in df_rfi.columns:
-        statuses |= set(df_rfi["Status"].dropna().unique())
+    for df in [df_sub, df_rfi]:
+        if df is not None and "Status" in df.columns:
+            statuses |= set(df["Status"].dropna().unique())
     df_statuses = pd.DataFrame({
         "Status": sorted(statuses),
         "Status_ID": range(1, len(statuses) + 1)
@@ -234,9 +333,10 @@ def create_lookup_tables(df_sub, df_rfi):
     all_dates = []
     for df in [df_sub, df_rfi]:
         if df is not None:
-            for col in ["Date_Created", "Due_Date", "Date_Closed"]:
+            for col in ["Date_Created", "Due_Date", "Date_Closed", "Final_Due_Date"]:
                 if col in df.columns:
-                    all_dates.extend(df[col].dropna().tolist())
+                    valid = pd.to_datetime(df[col], errors="coerce").dropna()
+                    all_dates.extend(valid.tolist())
 
     if all_dates:
         min_date = min(all_dates)
@@ -279,21 +379,15 @@ Overdue Submittals = CALCULATE(
     Submittals[Is_Overdue] = TRUE
 )
 
-Submittal Closure Rate = 
+Submittal Closure Rate =
     DIVIDE(
         CALCULATE(COUNTROWS(Submittals), Submittals[Is_Open] = FALSE),
         COUNTROWS(Submittals),
         0
     )
 
-Avg Submittal Turnaround = 
+Avg Submittal Days Open =
     AVERAGE(Submittals[Days_Open])
-
-Avg Submittal Turnaround (Closed) = 
-    CALCULATE(
-        AVERAGE(Submittals[Days_Open]),
-        Submittals[Is_Open] = FALSE
-    )
 
 --- RFI MEASURES ---
 
@@ -309,21 +403,15 @@ Overdue RFIs = CALCULATE(
     RFIs[Is_Overdue] = TRUE
 )
 
-RFI Closure Rate = 
+RFI Closure Rate =
     DIVIDE(
         CALCULATE(COUNTROWS(RFIs), RFIs[Is_Open] = FALSE),
         COUNTROWS(RFIs),
         0
     )
 
-Avg RFI Response Time = 
+Avg RFI Response Time =
     AVERAGE(RFIs[Days_Open])
-
-RFIs with Cost Impact = 
-    CALCULATE(
-        COUNTROWS(RFIs),
-        RFIs[Cost_Impact] IN {"Potential", "Confirmed", "Yes"}
-    )
 
 --- COMBINED MEASURES ---
 
@@ -331,7 +419,7 @@ Total Open Items = [Open Submittals] + [Open RFIs]
 
 Total Overdue Items = [Overdue Submittals] + [Overdue RFIs]
 
-Overall Health Score = 
+Overall Health Score =
     1 - DIVIDE(
         [Total Overdue Items],
         [Open Submittals] + [Open RFIs],
@@ -340,7 +428,7 @@ Overall Health Score =
 
 --- CONDITIONAL FORMATTING MEASURE ---
 
-Overdue Alert Color = 
+Overdue Alert Color =
     SWITCH(
         TRUE(),
         [Days_Open] > 30, "#EF4444",
@@ -375,14 +463,16 @@ def main():
     if df_sub is not None:
         df_sub = enrich_submittals(df_sub)
         print(f"  ✅ Submittals: {len(df_sub)} rows, {df_sub['Is_Overdue'].sum()} overdue")
+        print(f"     Final columns: {list(df_sub.columns)}")
     if df_rfi is not None:
         df_rfi = enrich_rfis(df_rfi)
         print(f"  ✅ RFIs: {len(df_rfi)} rows, {df_rfi['Is_Overdue'].sum()} overdue")
+        print(f"     Final columns: {list(df_rfi.columns)}")
 
     # Create lookup tables
     print("\n📊 Building lookup tables for star schema...")
     df_contractors, df_statuses, df_dates = create_lookup_tables(df_sub, df_rfi)
-    print(f"  ✅ Contractors: {len(df_contractors)}")
+    print(f"  ✅ Contractors/Parties: {len(df_contractors)}")
     print(f"  ✅ Statuses: {len(df_statuses)}")
     print(f"  ✅ Date table: {len(df_dates)} days")
 
@@ -418,30 +508,29 @@ def main():
     print("  6. Build visuals (see recommended layout below)")
     print(f"{'=' * 60}")
 
-    # Print recommended Power BI layout
     print("""
   📐 RECOMMENDED POWER BI DASHBOARD LAYOUT:
   ──────────────────────────────────────────
   PAGE 1: Executive Overview
     • KPI cards: Open / Overdue / Closure Rate (Submittals & RFIs)
     • Donut chart: Status distribution
-    • Stacked bar: Items by Contractor
+    • Stacked bar: Items by Ball in Court
     • Line chart: Cumulative open items over time
 
   PAGE 2: Submittal Deep Dive
     • Table: Full submittal log with conditional formatting
-    • Bar chart: Avg turnaround by Contractor
-    • Treemap: Ball in Court breakdown
-    • Slicer: Contractor, Status, Aging Bucket
+    • Bar chart: Days Open by Ball in Court
+    • Treemap: Responsibility breakdown
+    • Slicer: Ball in Court, Status, Aging Bucket
 
   PAGE 3: RFI Deep Dive
     • Table: Full RFI log with conditional formatting
-    • Bar chart: RFIs by Discipline
-    • Pie chart: Cost Impact distribution
-    • Matrix: Priority vs Discipline heatmap
+    • Bar chart: RFIs by Ball in Court
+    • Timeline: RFI creation trend over time
+    • Slicer: Status, Aging Bucket
 
   PAGE 4: Bottleneck Analysis
-    • Scatter: Days Open vs Due Date by Contractor
+    • Scatter: Days Open vs Due Date
     • Funnel: Open → Pending → Closed flow
     • Gauge: Overall Health Score
     """)
