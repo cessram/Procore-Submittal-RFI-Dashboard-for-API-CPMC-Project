@@ -23,9 +23,9 @@ import os
 # ============================================================
 # CONFIGURATION — Update these to match your files
 # ============================================================
-SUBMITTAL_FILE = "Open Submittals - Final (2).xlsx"
-RFI_FILE = "Open RFIs - Final (2).xlsx"
-OUTPUT_FILE = "PowerBI_Procore_Data.xlsx"
+SUBMITTAL_FILE = "../data/raw/Open Submittals - Final (2).xlsx"
+RFI_FILE = "../data/raw/Open RFIs - Final (2).xlsx"
+OUTPUT_FILE = "../data/processed/PowerBI_Procore_Data.xlsx"
 
 # Overdue thresholds (days)
 SUBMITTAL_OVERDUE_DAYS = 14
